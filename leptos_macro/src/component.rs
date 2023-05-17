@@ -8,12 +8,67 @@ use leptos_hot_reload::parsing::value_to_string;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote_spanned, ToTokens, TokenStreamExt};
 use syn::{
-    parse::Parse, parse_quote, spanned::Spanned,
+    braced,
+    parse::{Parse,ParseStream}, parse_quote, spanned::Spanned,
     AngleBracketedGenericArguments, Attribute, FnArg, GenericArgument,
     LitStr, Meta, Pat, PatIdent, Path,
     PathArguments, ReturnType, Type, TypePath, Visibility,
-    ItemFn, Stmt, Item,
+    Signature,
+    token::Brace,
 };
+
+#[derive(Clone)]
+pub struct ItemFn {
+    pub attrs: Vec<Attribute>,
+    pub vis: Visibility,
+    pub sig: Signature,
+    pub block: Box<Block>,
+}
+
+#[derive(Clone)]
+pub struct Block {
+    pub brace_token: Brace,
+    /// Statements in a block
+    pub stmts: TokenStream,
+}
+
+impl Parse for ItemFn {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let attrs = input.call(Attribute::parse_outer)?;
+        let vis: Visibility = input.parse()?;
+        let sig = input.parse()?;
+        let block = input.parse()?;
+        Ok(Self { attrs, vis, sig, block: Box::new(block) })
+    }
+}
+
+
+impl ToTokens for ItemFn {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        tokens.append_all(&self.attrs);
+        self.vis.to_tokens(tokens);
+        self.sig.to_tokens(tokens);
+        self.block.brace_token.surround(tokens, |tokens| {
+            tokens.append_all(self.block.stmts.clone());
+        });
+    }
+}
+
+impl Parse for Block {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let content;
+        Ok(Self { brace_token: braced!(content in input), stmts: content.parse()? })
+    }
+}
+
+impl ToTokens for Block {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.brace_token.surround(tokens, |tokens| {
+            tokens.append_all(self.stmts.clone());
+        });
+    }
+}
+
 pub struct Model {
     is_transparent: bool,
     docs: Docs,
@@ -140,23 +195,23 @@ impl ToTokens for Model {
         let mut body = body.to_owned();
 
         // check for components that end ;
-        if !is_transparent {
-            let ends_semi =
-                body.block.stmts.iter().last().and_then(|stmt| match stmt {
-                    Stmt::Item(Item::Macro(mac)) => mac.semi_token.as_ref(),
-                    _ => None,
-                });
-            if let Some(semi) = ends_semi {
-                proc_macro_error::emit_error!(
-                    semi.span(),
-                    "A component that ends with a `view!` macro followed by a \
-                     semicolon will return (), an empty view. This is usually \
-                     an accident, not intentional, so we prevent it. If you’d \
-                     like to return (), you can do it it explicitly by \
-                     returning () as the last item from the component."
-                );
-            }
-        }
+        // if !is_transparent {
+        //     let ends_semi =
+        //         body.block.stmts.iter().last().and_then(|stmt| match stmt {
+        //             Stmt::Item(Item::Macro(mac)) => mac.semi_token.as_ref(),
+        //             _ => None,
+        //         });
+        //     if let Some(semi) = ends_semi {
+        //         proc_macro_error::emit_error!(
+        //             semi.span(),
+        //             "A component that ends with a `view!` macro followed by a \
+        //              semicolon will return (), an empty view. This is usually \
+        //              an accident, not intentional, so we prevent it. If you’d \
+        //              like to return (), you can do it it explicitly by \
+        //              returning () as the last item from the component."
+        //         );
+        //     }
+        // }
 
         body.sig.ident = format_ident!("__{}", body.sig.ident);
         #[allow(clippy::redundant_clone)] // false positive
