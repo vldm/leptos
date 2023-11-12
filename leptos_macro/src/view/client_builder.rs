@@ -143,6 +143,7 @@ pub(crate) fn node_to_tokens(
             global_class,
             view_marker,
         ),
+        _ => None,
     }
 }
 
@@ -337,6 +338,7 @@ pub(crate) fn element_to_tokens(
                     false,
                 ),
                 Node::Comment(_) | Node::Doctype(_) => (quote! {}, false),
+                _ => (quote! {}, false),
             };
             if is_static {
                 quote! {

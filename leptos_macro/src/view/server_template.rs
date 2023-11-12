@@ -61,6 +61,7 @@ pub(crate) fn root_node_to_tokens_ssr(
             root_element_to_tokens_ssr(node, global_class, view_marker)
                 .unwrap_or_default()
         }
+        _ => quote! {},
     }
 }
 
@@ -383,7 +384,9 @@ fn element_to_tokens_ssr(
                             Span::call_site(),
                             "You can't nest a fragment inside an element."
                         ),
-                        Node::Comment(_) | Node::Doctype(_) => {}
+                        Node::Comment(_)
+                        | Node::Doctype(_)
+                        | Node::Custom(_) => {}
                     }
                 }
             }
